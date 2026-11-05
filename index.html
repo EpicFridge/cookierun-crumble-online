@@ -1,0 +1,1158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Crumble Hangout</title>
+<style>
+  @font-face { font-family: "CookieRun"; src: url("ui/cookierun-bold.woff2") format("woff2"); font-weight: normal; font-display: swap; }
+  :root { --panel: rgba(24, 20, 32, .82); --line: rgba(255, 210, 150, .35); --text: #fff7ec; --dim: #c9b9a8; --accent: #ffcf6a; --owner: #5fe6ff; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #2a2233; font-family: "CookieRun", "Trebuchet MS", "Segoe UI", Arial, sans-serif; color: var(--text); user-select: none; }
+  input, button { font-family: inherit; }
+  #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+  #view.drag { cursor: grabbing; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: 14px; line-height: 1.45; text-shadow: 0 1px 2px #000; }
+  .hud { display: none; }
+  body.playing .hud { display: block; }
+  body.playing #topRight.hud { display: flex; }
+  .owner { color: var(--owner) !important; }
+  .tag { font-size: 11px; opacity: .85; }
+
+  /* ---------- labels over heads */
+  #labels { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+  .nameTag { position: absolute; transform: translate(-50%, -100%); white-space: nowrap; font-size: 13px; color: #fff; text-shadow: 0 0 3px #000, 0 1px 2px #000, 0 0 1px #000; }
+  .bubble { position: absolute; transform: translate(-50%, -100%); max-width: 230px; padding: 6px 10px; border-radius: 14px; background: #fbf3e2; color: #4a3527; font-size: 13px; line-height: 1.3;
+    box-shadow: 0 2px 0 #c8b99b, 0 3px 8px rgba(0,0,0,.35); text-align: center; word-wrap: break-word; transition: opacity .4s; }
+  .bubble::after { content: ""; position: absolute; left: 50%; bottom: -7px; margin-left: -7px; border: 7px solid transparent; border-bottom: 0; border-top-color: #fbf3e2; }
+
+  /* ---------- CookieTalk-style chat (top left) */
+  #chat { position: fixed; left: 12px; top: 12px; width: min(360px, calc(100vw - 24px)); pointer-events: none; }
+  #chat.hidden #chatLog { display: none; }
+  #chatLog { background: rgba(14, 38, 44, .74); border-radius: 16px; padding: 8px 10px 4px; max-height: 46vh; overflow-y: hidden; display: flex; flex-direction: column; gap: 2px;
+    box-shadow: inset 0 0 0 2px rgba(255,255,255,.06); }
+  #chat.open #chatLog { overflow-y: auto; pointer-events: auto; }
+  #chatLog:empty { display: none; }
+  .msg { display: flex; gap: 8px; align-items: flex-start; padding: 3px 0; transition: opacity .8s; }
+  #chat:not(.open) .msg.old { display: none; }
+  .head { flex: 0 0 44px; width: 44px; height: 44px; border-radius: 50%; position: relative; background: #000 url("ui/ImgCookieTalkHeadBack.png") center/cover; box-shadow: 0 0 0 2px var(--c, #ffcf6a); }
+  .head img { position: absolute; inset: 3px; width: 38px; height: 38px; border-radius: 50%; object-fit: cover; }
+  .msgBody { min-width: 0; }
+  .msgName { font-style: italic; font-size: 13.5px; color: var(--c, #ffcf6a); text-shadow: -1px -1px 0 #1a1a1a, 1px -1px 0 #1a1a1a, -1px 1px 0 #1a1a1a, 1px 1px 0 #1a1a1a; margin: 0 0 2px 2px; }
+  .msgName .tag { font-style: normal; }
+  .msgText { position: relative; display: inline-block; background: #f2ead8; color: #3b2b1f; border-radius: 12px; padding: 5px 11px; font-size: 13.5px; line-height: 1.3; word-wrap: break-word; max-width: 280px; text-shadow: none;
+    box-shadow: 0 2px 0 rgba(0,0,0,.25); }
+  .msgText::before { content: ""; position: absolute; left: -6px; top: 7px; border: 6px solid transparent; border-left: 0; border-right-color: #f2ead8; }
+  .sys { color: #b9d8d2; font-size: 12px; padding: 1px 4px 3px; text-shadow: 0 1px 2px #000; }
+  #chatBar { display: none; margin-top: 6px; pointer-events: auto; background: rgba(14, 38, 44, .9); border-radius: 14px; padding: 6px; gap: 6px; align-items: center; }
+  #chat.open #chatBar { display: flex; }
+  #chatBar img { width: 26px; height: 24px; }
+  #chatIn { flex: 1; min-width: 0; border: 0; border-radius: 10px; padding: 7px 10px; font-size: 14px; background: #f2ead8; color: #3b2b1f; outline: none; }
+  #chatScope { border: 0; border-radius: 10px; padding: 7px 6px; background: #2c5c63; color: #fff; font-size: 13px; cursor: pointer; outline: none; }
+  .scope { font-style: normal; font-size: 10.5px; color: #fff; background: #2c8a6e; border-radius: 6px; padding: 0 5px; margin-left: 4px; text-shadow: none; vertical-align: 1px; }
+  #ownerTools { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+  #ownerTools button { border: 0; border-radius: 9px; padding: 7px 6px; background: #4a6fd1; color: #fff; cursor: pointer; font-size: 12.5px; }
+  #ownerTools button.hound { background: #b54a8a; grid-column: span 2; }
+  #ownerTools button.clear { background: #6b6b6b; grid-column: span 2; }
+  #wallet { position: fixed; left: 50%; top: 12px; transform: translateX(-50%); display: none; gap: 14px; align-items: center; font-size: 16px; padding: 5px 14px; }
+  body.playing #wallet.show { display: flex; }
+  #wallet span { display: flex; align-items: center; gap: 5px; }
+  #wallet img { width: 24px; height: 24px; object-fit: contain; }
+  #warn { position: fixed; left: 50%; top: 58px; transform: translateX(-50%); z-index: 30; display: none; background: rgba(150, 30, 30, .92); border: 1px solid #ff9c8a; color: #fff;
+    border-radius: 12px; padding: 7px 16px; font-size: 14px; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+  #warn.show { display: block; }
+  #view, #mobile, #mobile * { touch-action: none; }
+  #mobile { display: none !important; }
+  body.playing.mobileOn #mobile { display: block !important; }
+  body.mobileOn #actions, body.mobileOn #hint, body.mobileOn #chatHint { display: none !important; }
+  #joy { position: fixed; left: 24px; bottom: 24px; width: 136px; height: 136px; border-radius: 50%; background: rgba(255,255,255,.12); border: 2px solid rgba(255,255,255,.3); z-index: 6; }
+  #joyKnob { position: absolute; left: 50%; top: 50%; width: 58px; height: 58px; margin: -29px 0 0 -29px; border-radius: 50%; background: rgba(255,255,255,.55); box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+  #mRight { position: fixed; right: 16px; bottom: 18px; z-index: 6; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .mrow { display: flex; gap: 8px; }
+  .mb { width: 54px; height: 54px; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); background: rgba(24,20,32,.7); color: #fff; font-size: 13px; padding: 0; }
+  .mb.big { width: 72px; height: 72px; font-size: 15px; background: rgba(255, 207, 106, .85); color: #3a2a12; }
+  .mb.sm { width: 42px; height: 42px; font-size: 14px; }
+  .mb.on { background: rgba(255, 207, 106, .85); color: #3a2a12; }
+  .mb.dim { opacity: .35; }
+  #mTop { position: fixed; left: 24px; bottom: 172px; z-index: 6; display: flex; gap: 8px; }
+  #mSkills { display: grid; grid-template-columns: repeat(4, 42px); gap: 6px; }
+  #kicked button { font-size: 17px; padding: 9px 26px; border: 0; border-radius: 12px; background: var(--accent); color: #3a2a12; cursor: pointer; }
+  #chatSend { border: 0; border-radius: 10px; padding: 7px 12px; background: var(--accent); color: #3a2a12; cursor: pointer; }
+  #chatHint { font-size: 11.5px; color: #cfe; opacity: .75; margin: 4px 0 0 6px; text-shadow: 0 1px 2px #000; }
+  #chat.open #chatHint { display: none; }
+
+  /* ---------- top right: settings | owner | players */
+  #topRight { position: fixed; right: 12px; top: 12px; gap: 8px; align-items: flex-start; max-width: calc(100vw - 24px); }
+  #setWrap { position: relative; }
+  #setBtn { width: 42px; height: 42px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font-size: 22px; cursor: pointer; line-height: 1; }
+  #setBtn:hover, #setBtn.on { color: var(--accent); }
+  #setPanel { display: none; position: absolute; right: 0; top: 48px; width: 310px; z-index: 5; }
+  #setPanel.show { display: block; }
+  #setPanel label { white-space: nowrap; display: flex; align-items: center; gap: 8px; margin: 6px 0; color: var(--dim); cursor: pointer; }
+  #setPanel input[type=range] { flex: 1; }
+  #setPanel .val { min-width: 42px; text-align: right; color: var(--text); }
+  #setPanel h3, #ownerPanel h3, #plist h3 { margin: 0 0 6px; font-size: 14px; color: var(--accent); font-weight: normal; }
+  #ownerPanel { display: none; width: 250px; max-height: 60vh; overflow-y: auto; }
+  body.ownerOpen #ownerPanel { display: block; }
+  .orow { display: flex; align-items: center; gap: 6px; padding: 3px 0; border-top: 1px solid rgba(255,255,255,.07); }
+  .orow span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .orow button { border: 0; border-radius: 8px; padding: 3px 9px; background: #e2584a; color: #fff; cursor: pointer; font-size: 12px; }
+  .alt { color: #ff9c7a; font-size: 11px; }
+  #plist { width: 270px; max-height: 60vh; overflow-y: auto; }
+  .prow { display: flex; align-items: center; gap: 7px; padding: 2px 0; font-size: 13px; }
+  .prow img { width: 26px; height: 26px; object-fit: contain; flex: 0 0 26px; }
+  .prow .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .prow .sub { display: block; font-size: 11px; color: var(--dim); line-height: 1.1; }
+  .prow img { width: 30px !important; height: 30px !important; flex-basis: 30px !important; }
+  .prow .mp { margin-left: auto; font-size: 11px; color: var(--dim); background: rgba(255,255,255,.08); border-radius: 6px; padding: 0 5px; }
+  .prow.me .nm { text-decoration: underline; text-underline-offset: 3px; }
+
+  #actions { position: fixed; left: 12px; bottom: 12px; font-size: 13px; }
+  #actions div { cursor: pointer; padding: 1px 0; }
+  #actions div:hover { color: var(--accent); }
+  #actions .dim { opacity: .4; }
+  #actions .on { color: var(--accent); }
+  #hint { position: fixed; right: 12px; bottom: 12px; text-align: right; color: var(--dim); font-size: 12.5px; }
+  #net { position: fixed; left: 50%; top: 10px; transform: translateX(-50%); font-size: 12.5px; padding: 4px 12px; display: none; }
+  body.playing #net.show { display: block; }
+
+  /* ---------- menu */
+  #menu { position: fixed; inset: 0; display: flex; flex-direction: column; background: radial-gradient(ellipse at top, #4a3a5c, #1d1726 70%); padding: 18px 22px; gap: 12px; z-index: 20; }
+  body.playing #menu { display: none; }
+  body.playing.menuOpen #menu { display: flex; background: rgba(20, 15, 28, .78); backdrop-filter: blur(3px); }
+  #menu h1 { margin: 0; font-size: 26px; color: var(--accent); letter-spacing: .5px; font-weight: normal; }
+  #menu h2 { margin: 0 0 8px; font-size: 16px; color: var(--dim); font-weight: normal; }
+  #menu h2 b { color: var(--text); font-weight: normal; }
+  .topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; }
+  .nameBox { display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,.3); border: 1px solid var(--line); border-radius: 12px; padding: 6px 10px; }
+  .nameBox span { color: var(--dim); }
+  #nameIn { width: 260px; max-width: 52vw; border: 0; border-radius: 8px; padding: 7px 10px; font-size: 15px; background: #f2ead8; color: #3b2b1f; outline: none; }
+  #nameIn:disabled { opacity: .7; }
+  #nameCount { font-size: 12px; color: var(--dim); min-width: 40px; }
+  #conn { font-size: 13px; color: var(--dim); }
+  #conn.ok { color: #9be39b; } #conn.bad { color: #ffb4a0; }
+  .cols { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; min-height: 0; }
+  .col { display: flex; flex-direction: column; min-height: 0; background: rgba(0, 0, 0, .25); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
+  .grid { flex: 1; overflow-y: auto; display: grid; gap: 8px; align-content: start; padding-right: 4px; }
+  #cookieGrid { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); }
+  #mapGrid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+  .card { position: relative; background: rgba(255, 255, 255, .06); border: 2px solid transparent; border-radius: 10px; padding: 6px; cursor: pointer; text-align: center; font-size: 12px; color: var(--dim); }
+  .card:hover { background: rgba(255, 255, 255, .12); }
+  .card.sel { border-color: var(--accent); color: var(--text); background: rgba(255, 207, 106, .14); }
+  .card img { display: block; margin: 0 auto 4px; }
+  #cookieGrid .card img { width: 72px; height: 72px; object-fit: contain; }
+  #mapGrid .card img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; }
+  .count { position: absolute; left: 10px; top: 10px; display: flex; align-items: center; gap: 3px; background: rgba(0,0,0,.7); color: #fff; border-radius: 8px; padding: 1px 6px 1px 4px; font-size: 12px; }
+  .count svg { width: 13px; height: 13px; fill: currentColor; }
+  .count.zero { opacity: .55; }
+  .bar { display: flex; align-items: center; gap: 14px; }
+  #menuErr { color: #ffb4a0; }
+  #play, #closeMenu { font-size: 18px; padding: 10px 30px; border-radius: 12px; border: 0; cursor: pointer; }
+  #play { margin-left: auto; background: var(--accent); color: #3a2a12; }
+  #play:disabled { opacity: .5; cursor: default; }
+  #closeMenu { display: none; background: rgba(255,255,255,.12); color: var(--text); }
+  body.playing #closeMenu { display: inline-block; }
+  #kicked { display: none; position: fixed; inset: 0; z-index: 50; background: rgba(10,6,14,.88); align-items: center; justify-content: center; flex-direction: column; gap: 10px; font-size: 22px; text-align: center; padding: 20px; }
+  #kicked.show { display: flex; }
+  #kicked small { font-size: 14px; color: var(--dim); }
+  @media (max-width: 760px) { .cols { grid-template-columns: 1fr; } #hint { display: none !important; } #plist { width: 200px; } }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="labels"></div>
+
+<div id="chat" class="hud">
+  <div id="chatLog"></div>
+  <div id="chatBar"><img src="ui/IconChat.png" alt=""><input id="chatIn" maxlength="150" placeholder="Say something..." autocomplete="off"><button id="chatSend">Send</button></div>
+  <div id="chatHint">/ to chat · P to hide</div>
+</div>
+
+<div id="topRight" class="hud">
+  <div id="setWrap">
+    <button id="setBtn" title="Settings">⚙</button>
+    <div id="setPanel" class="panel">
+      <h3>Settings</h3>
+      <label><input type="checkbox" id="optBill"> Billboarding sprites (experimental)</label>
+      <label><input type="checkbox" id="optBubbles" checked> Chat bubbles</label>
+      <label><input type="checkbox" id="optNames" checked> Name tags</label>
+      <label><input type="checkbox" id="optMobile"> Mobile controls</label>
+      <label>Sound <input type="range" id="optVol" min="0" max="1" step="0.05" value="0.7"><span class="val" id="optVolV">70%</span></label>
+    </div>
+  </div>
+  <div id="ownerPanel" class="panel"><h3>Owner menu (O)</h3>
+    <div id="ownerTools">
+      <button class="hound" data-tool="hound">Spawn Cake Hound</button>
+      <button data-tool="coin">Coin Rain</button><button data-tool="crystal">Crystal Rain</button>
+      <button class="clear" data-tool="clear">Remove nonsense</button>
+    </div>
+    <div id="ownerList"></div></div>
+  <div id="plist" class="panel"><h3 id="plistHead">Players: 0/100</h3><div id="plistRows"></div></div>
+</div>
+
+<div id="actions" class="panel hud"></div>
+<div id="warn"></div>
+<div id="mobile">
+  <div id="joy"><div id="joyKnob"></div></div>
+  <div id="mTop"><button class="mb sm" data-m="chat">💬</button><button class="mb sm" data-m="menu">☰</button><button class="mb sm" data-m="owner" id="mOwner" style="display:none">O</button><button class="mb sm" data-m="cam">⟲</button></div>
+  <div id="mRight">
+    <div class="mrow" id="mSkills"></div>
+    <div class="mrow"><button class="mb" data-m="run" id="mRun">Run</button><button class="mb big" data-m="jump">Jump</button></div>
+  </div>
+</div>
+<div id="hint" class="panel hud"></div>
+<div id="net" class="panel"></div>
+<div id="wallet" class="panel"><span><img src="ui/icon_coin.png" alt="Coins"><b id="wCoin">0</b></span><span><img src="ui/icon_crystal.png" alt="Crystals"><b id="wCrystal">0</b></span></div>
+
+<div id="menu">
+  <div class="topbar">
+    <h1>Crumble Hangout</h1>
+    <div class="nameBox"><span>Name</span><input id="nameIn" maxlength="35" placeholder="Your name (max 32)" autocomplete="off" spellcheck="false"><span id="nameCount">0/32</span></div>
+    <span id="conn">Connecting...</span>
+  </div>
+  <div class="cols">
+    <div class="col"><h2>Cookie: <b id="selCookie">-</b></h2><div class="grid" id="cookieGrid"></div></div>
+    <div class="col"><h2>Map: <b id="selMap">-</b></h2><div class="grid" id="mapGrid"></div></div>
+  </div>
+  <div class="bar"><span id="menuErr"></span><button id="closeMenu">Back (M)</button><button id="play">Play</button></div>
+</div>
+
+<div id="kicked"><div id="kickedText">You were kicked.</div><button onclick="location.reload()">Rejoin</button></div>
+
+<script>window.CRUMBLE_DATA = { maps: {}, cookies: {}, mapList: [], cookieList: [] };</script>
+<script src="maps/index.js"></script>
+<script src="cookies/index.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const D = window.CRUMBLE_DATA;
+const COOKIE_INFO = Object.fromEntries(D.cookieList.map(c => [c.id, c]));
+
+// Names from the Cookie Run wiki's shared ID list (cookierun.wiki/w/List_of_Cookie_IDs); 05xx+, 2006 and 40xx are matched by looks
+const NAMES = {
+  cookie0001: "GingerBrave", cookie0002: "Strawberry Cookie", cookie0003: "GingerBright", cookie0007: "Ninja Cookie",
+  cookie0008: "Princess Cookie", cookie0009: "Knight Cookie", cookie0010: "Coffee Cookie", cookie0011: "Skater Cookie",
+  cookie0012: "Angel Cookie", cookie0013: "Zombie Cookie", cookie0015: "Muscle Cookie", cookie0018: "Skating Queen Cookie",
+  cookie0020: "Cheerleader Cookie", cookie0023: "Devil Cookie", cookie0025: "Wizard Cookie", cookie0027: "Rockstar Cookie",
+  cookie0028: "Cherry Cookie", cookie0034: "Alchemist Cookie", cookie0035: "Vampire Cookie", cookie0037: "Cheesecake Cookie",
+  cookie0038: "Adventurer Cookie", cookie0040: "Tiger Lily Cookie", cookie0042: "Blackberry Cookie", cookie0045: "Cocoa Cookie",
+  cookie0047: "Red Pepper Cookie", cookie0048: "Cream Puff Cookie", cookie0050: "Gumball Cookie", cookie0052: "Lemon Cookie",
+  cookie0053: "Orange Cookie", cookie0054: "Lime Cookie", cookie0056: "Peach Cookie", cookie0058: "Onion Cookie",
+  cookie0059: "Macaron Cookie", cookie0063: "Herb Cookie", cookie0069: "Pancake Cookie", cookie0070: "Wind Archer Cookie",
+  cookie0072: "Strawberry Shortcake Cookie", cookie0081: "Princess Bari Cookie", cookie0101: "Popcorn Cookie",
+  cookie0106: "Space Doughnut", cookie0107: "Dr. Wasabi Cookie", cookie0126: "Pomegranate Cookie", cookie0136: "Ion Cookie Robot",
+  cookie0181: "Scorpion Cookie", cookie0195: "Dr. Bones Cookie", cookie0250: "Cherry Cola Cookie",
+  cookie0502: "Poison Mushroom Cookie", cookie0503: "Licorice Cookie", cookie0511: "Madeleine Cookie", cookie0513: "Espresso Cookie",
+  cookie0515: "Rye Cookie",
+  cookie0518: "Strawberry Crepe Cookie", cookie0522: "Lilac Cookie", cookie0527: "Twizzly Gummy Cookie", cookie0570: "Schwarzwälder",
+  cookie0573: "Milky Way Cookie", cookie0672: "Pomni Cookie", cookie0673: "Jax Cookie", cookie0674: "Ragatha Cookie",
+  cookie0675: "Gangle Cookie", cookie0676: "Zooble Cookie", cookie0677: "Kinger Cookie", cookie0678: "Caine Cookie",
+  cookie2006: "Witchberry Cookie", cookie4001: "Dark Cherry Cookie", cookie4002: "Berry Yogurt Cookie", cookie4003: "Grapevine Cookie",
+  cookie4010: "Pinot Noir Cookie", cookie4017: "Toothpaste Cookie", cookie4019: "Milk Cookie",
+  cookie1004: "Cream Soda Cookie", cookie3001: "Melon Soda Cookie", cookie4006: "Cool Mint Cookie", cookie4011: "Chardonnay Cookie",
+  cookie4012: "Oven Wanderer Cookie", cookie4013: "Brightseeker Cookie", cookie4014: "Readyberry Cookie", cookie4018: "Space Donut Cookie",
+  cookie4024: "Nameless Cake Hound", cookie4025: "Moon Rabbit Cookie",
+  cookie4021: "Blueberry Bird", cookie4022: "Sugar Gnome", cookie4023: "Bear Jelly Worker",
+};
+const cookieLabel = id => NAMES[id] || (id || "").replace("cookie", "Cookie ");
+const mapLabel = id => (id || "").replace("maptheme", "");
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+const typing = () => { const a = document.activeElement; return a && (a.tagName === "INPUT" && a.type !== "checkbox" && a.type !== "range"); };
+function loadScript(src) {
+  return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("missing " + src)); document.head.appendChild(s); });
+}
+
+let curCookie = null, curMap = null, playing = false;
+
+/* ================================================================ settings */
+const S = {
+  bill: store.get("ch.bill") === "1", bubbles: store.get("ch.bubbles") !== "0", names: store.get("ch.names") !== "0",
+  vol: parseFloat(store.get("ch.vol") ?? "0.7"), spd: 1, size: 1,
+};
+function bindSetting(id, key, fmt) {
+  const el = $(id);
+  if (el.type === "checkbox") { el.checked = S[key]; el.onchange = () => { S[key] = el.checked; store.set("ch." + key, el.checked ? "1" : "0"); el.blur(); }; }
+  else { el.value = S[key]; const show = () => { const v = $(id + "V"); if (v) v.textContent = fmt(S[key]); };
+    show(); el.oninput = () => { S[key] = parseFloat(el.value); store.set("ch." + key, el.value); show(); }; el.onchange = () => el.blur(); }
+}
+S.mobile = store.get("ch.mobile") === "1";
+bindSetting("optBill", "bill"); bindSetting("optBubbles", "bubbles"); bindSetting("optNames", "names"); bindSetting("optMobile", "mobile");
+const applyMobile = () => document.body.classList.toggle("mobileOn", !!S.mobile);
+$("optMobile").addEventListener("change", applyMobile); applyMobile();
+bindSetting("optVol", "vol", v => Math.round(v * 100) + "%");
+$("setBtn").onclick = () => { $("setPanel").classList.toggle("show"); $("setBtn").classList.toggle("on"); };
+
+/* ================================================================ sounds */
+const SFX = {};
+for (const [k, f] of [["tap", "ui_button_tap_generic"], ["chime", "ui_tutorialchatbox_basic_chime"], ["boing", "offlinereward_luckyreward_normal_boing_01_02"],
+                      ["hurt", "battle_shared_hurt_strong_01"], ["boom", "mc0034_skill0_explosion01_2"], ["collect", "ui_button_sugarrune_reroll"]]) {
+  SFX[k] = new Audio("sounds/" + f + ".wav"); SFX[k].preload = "auto";
+}
+function sfx(k, vol = 1) {
+  const v = Math.max(0, Math.min(1, vol * S.vol)); if (v <= 0.01 || !SFX[k]) return;
+  const a = SFX[k].cloneNode(); a.volume = v; a.play().catch(() => {});
+}
+// every button / card / toggle in the menus taps
+document.addEventListener("click", e => { if (e.target.closest("button, .card, #setPanel label, #actions div")) sfx("tap", 0.8); }, true);
+
+/* ================================================================ network */
+const net = { ws: null, ok: false, id: 0, name: "", owner: false, roster: [], counts: {}, online: 0, max: 100, offline: false, joined: false };
+function netSend(m) { if (net.ws && net.ws.readyState === 1) net.ws.send(JSON.stringify(m)); }
+function connect() {
+  if (location.protocol === "file:") { net.offline = true; setConn("Offline mode (start server.py for multiplayer)", ""); return; }
+  setConn("Connecting...", "");
+  const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
+  net.ws = ws;
+  ws.onopen = () => {
+    net.ok = true; setConn("Connected", "ok");
+    if (playing && !net.offline) netSend({ t: "join", name: store.get("crumble.name") || net.name, cookie: curCookie, map: curMap });
+  };
+  ws.onclose = () => {
+    net.ok = false; net.joined = false;
+    if (kickedFlag) return;
+    if (net.joined) { $("net").textContent = "Disconnected - reconnecting..."; $("net").classList.add("show"); }
+    setConn("Disconnected - retrying...", "bad");
+    setTimeout(() => { connect(); }, 2500);
+  };
+  ws.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } onNet(m); };
+}
+function setConn(t, cls) { $("conn").textContent = t; $("conn").className = cls; }
+let kickedFlag = false;
+function onNet(m) {
+  switch (m.t) {
+    case "counts": net.counts = m.counts || {}; net.online = m.online || 0; net.max = m.max || 100; updateCounts(); setConn(`Connected · ${net.online}/${net.max} online`, "ok"); break;
+    case "welcome":
+      net.id = m.id; net.name = m.name; net.owner = m.owner; net.max = m.max; net.joined = true;
+      $("net").classList.remove("show");
+      if (pendingJoin) { const f = pendingJoin; pendingJoin = null; f(); }
+      else { sendState(true); addSys("Reconnected."); }     // rejoined after a dropped connection: carry on where we were
+      break;
+    case "error": $("menuErr").textContent = m.text; joining = false; $("play").disabled = false;
+      if (net.joined === false && playing) { /* reconnect clash: fall back to offline */ }
+      break;
+    case "roster": onRoster(m); break;
+    case "snap": onSnap(m.p); onHounds(m.h || []); break;
+    case "chat": addChat(m); sfx("chime", 0.8); { const r = remotes.get(m.id); if (m.id === net.id) showBubble(meLabel, m.text); else if (r) showBubble(r.label, m.text); } break;
+    case "sys": addSys(m.text); break;
+    case "jump": { const r = remotes.get(m.id); if (r) { const d = Math.hypot(r.x - me.x, r.z - me.z); sfx("boing", Math.max(0, 1 - d / 28) * 0.8); } } break;
+    case "gone": leaveRemote(m.id); break;
+    case "fling": flingMe(m.dx, m.dz); break;
+    case "warn": { const w = $("warn"); w.textContent = m.text; w.classList.add("show"); clearTimeout(w._t); w._t = setTimeout(() => w.classList.remove("show"), 5000); sfx("hurt", 0.4); } break;
+    case "bite": sfx("hurt", m.id === net.id ? 1 : Math.max(0, 1 - Math.hypot(m.x - me.x, m.z - me.z) / 28) * 0.8); break;
+    case "items": clearItems(); addItems(m.items); break;
+    case "itemsAdd": addItems(m.items); break;
+    case "itemsDel": for (const id of m.ids) removeItem(id); break;
+    case "clearAll": clearItems(); for (const id of [...hounds.keys()]) dropHound(id); break;
+    case "wallet": $("wCoin").textContent = m.w.coin || 0; $("wCrystal").textContent = m.w.crystal || 0; $("wallet").classList.add("show"); break;
+    case "kicked": kickedFlag = true; $("kickedText").textContent = "You were kicked by " + (m.by || "the owner") + "."; $("kicked").classList.add("show"); break;
+  }
+}
+let pendingJoin = null, joining = false;
+
+/* ================================================================ menu */
+let selCookie = store.get("crumble.cookie") || "cookie0001";
+let selMap = store.get("crumble.map") || "mapthemeS0001";
+if (!COOKIE_INFO[selCookie]) selCookie = (D.cookieList[0] || {}).id;
+if (!D.mapList.find(m => m.id === selMap)) selMap = (D.mapList[0] || {}).id;
+$("nameIn").value = store.get("crumble.name") || "";
+const updNameCount = () => { const v = $("nameIn").value, n = v.startsWith("aD:") ? v.length - 3 : v.length; $("nameCount").textContent = n + "/32"; $("nameCount").style.color = n > 32 ? "#ffb4a0" : ""; };
+$("nameIn").oninput = updNameCount; updNameCount();
+const PERSON = '<svg viewBox="0 0 16 16"><circle cx="8" cy="4.5" r="3.3"/><path d="M1.5 15.5c0-4 2.9-6.3 6.5-6.3s6.5 2.3 6.5 6.3z"/></svg>';
+function buildMenu() {
+  const cg = $("cookieGrid"); cg.innerHTML = "";
+  for (const c of D.cookieList) {
+    const d = document.createElement("div"); d.className = "card" + (c.id === selCookie ? " sel" : "");
+    d.innerHTML = `<img src="${c.thumb}" alt=""><div></div>`; d.lastChild.textContent = cookieLabel(c.id);
+    d.onclick = () => { selCookie = c.id; buildMenu(); };
+    d.ondblclick = () => go();
+    cg.appendChild(d);
+  }
+  const mg = $("mapGrid"); mg.innerHTML = "";
+  for (const m of D.mapList) {
+    const d = document.createElement("div"); d.className = "card" + (m.id === selMap ? " sel" : "");
+    d.innerHTML = (m.thumb ? `<img src="${m.thumb}" alt="">` : "") + `<div class="count" data-map="${m.id}">${PERSON}<span>0</span></div><div class="lbl"></div>`;
+    d.querySelector(".lbl").textContent = mapLabel(m.id) + (m.id === curMap && playing ? " (you're here)" : "");
+    d.onclick = () => { selMap = m.id; buildMenu(); };
+    d.ondblclick = () => go();
+    mg.appendChild(d);
+  }
+  $("selCookie").textContent = selCookie ? cookieLabel(selCookie) : "-";
+  $("selMap").textContent = selMap ? mapLabel(selMap) : "-";
+  $("play").textContent = playing ? (selMap !== curMap ? "Go to map" : "Apply") : "Play";
+  updateCounts();
+}
+function updateCounts() {
+  for (const el of document.querySelectorAll(".count")) {
+    const n = net.counts[el.dataset.map] || 0;
+    el.querySelector("span").textContent = n; el.classList.toggle("zero", !n);
+  }
+}
+function openMenu() { selCookie = curCookie; selMap = curMap; document.body.classList.add("menuOpen"); $("nameIn").disabled = true; $("menuErr").textContent = ""; buildMenu(); }
+function closeMenu() { document.body.classList.remove("menuOpen"); }
+$("closeMenu").onclick = closeMenu;
+$("play").onclick = () => go();
+buildMenu();
+
+/* ================================================================ renderer / scene */
+const renderer = new THREE.WebGLRenderer({ canvas: $("view"), antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 700);
+// default view is close to the game's own battle camera (looking down at ~55°); drag/scroll to change, R to reset
+const CAM_DEFAULT = { dist: 15, yaw: 0, pitch: 0.95 };
+let camDist = CAM_DEFAULT.dist, camYaw = CAM_DEFAULT.yaw, camPitch = CAM_DEFAULT.pitch;
+const camRight = new THREE.Vector3(1, 0, 0), camUp = new THREE.Vector3(0, 1, 0);
+
+const U = {   // uniforms shared by every map shader (filled per map)
+  yaw: { value: 0 },
+  fogNear: { value: 40 }, fogFar: { value: 70 }, fogCol: { value: new THREE.Color(1, 1, 1) }, fogAmt: { value: 0.2 },
+  lightCol: { value: new THREE.Color(1, 1, 1) }, sat: { value: 1 },
+};
+const COMMON_GLSL = `uniform float fogNear, fogFar, fogAmt, sat; uniform vec3 fogCol, lightCol; varying float vDist;
+  vec3 grade(vec3 c) { float l = dot(c, vec3(0.299, 0.587, 0.114)); c = mix(vec3(l), c, sat) * lightCol;
+    return mix(c, fogCol, smoothstep(fogNear, fogFar, vDist) * fogAmt); }`;
+const texLoader = new THREE.TextureLoader();
+const B64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0)).buffer;
+
+/* ================================================================ map */
+let world = null;
+
+// Builds one prop batch. Every prop (a "group" = all the quads of one baked map object) turns as one solid piece
+// around its own centre in billboard mode, so multi-part objects never come apart. Big groups never turn.
+// The part of a sprite that sits below the floor is laid flat on the ground (toward the camera) instead of poking under it.
+function buildProps(b, tex, solids) {
+  const f = new Float32Array(B64(b.data)), n = b.n;
+  const gr = b.grp ? new Float32Array(B64(b.grp)) : null;
+  const idx = new Uint32Array(B64(b.idx));
+  const gid = i => gr ? gr[i] : Math.floor(i / 4);
+  const G = new Map();
+  for (let i = 0; i < n; i++) {
+    const id = gid(i); let g = G.get(id);
+    if (!g) G.set(id, g = { x0: 1e9, x1: -1e9, z0: 1e9, z1: -1e9, y1: -1e9, sx: 0, sz: 0, k: 0 });
+    const x = f[i*7] + f[i*7+3], z = f[i*7+2], y = f[i*7+1] + f[i*7+4];
+    g.x0 = Math.min(g.x0, x); g.x1 = Math.max(g.x1, x); g.z0 = Math.min(g.z0, z); g.z1 = Math.max(g.z1, z); g.y1 = Math.max(g.y1, y);
+    g.sx += f[i*7]; g.sz += f[i*7+2]; g.k++;
+  }
+  for (const g of G.values()) {
+    g.cx = (g.x0 + g.x1) / 2; g.cz = (g.z0 + g.z1) / 2; const w = g.x1 - g.x0;
+    g.big = (w > 7 || g.y1 > 5.5 || (g.z1 - g.z0) > 7) ? 1 : 0;
+    // something you bump into: a reasonably sized, reasonably tall object (trees, rocks, benches, crates...)
+    if (!g.big && w > 1.0 && g.y1 > 1.0 && solids) solids.push([g.sx / g.k, g.sz / g.k, Math.min(0.6, 0.18 * w)]);
+  }
+  const P = [], C = [], UV = [], GC = [], BG = [];
+  const emit = (v) => { const g = G.get(v.g); P.push(v.px, v.py, v.pz); C.push(v.cx, v.cy); UV.push(v.u, v.v); GC.push(g.cx, 0, g.cz); BG.push(g.big); };
+  const V = i => ({ px: f[i*7], py: f[i*7+1], pz: f[i*7+2], cx: f[i*7+3], cy: f[i*7+4], u: f[i*7+5], v: f[i*7+6], g: gid(i) });
+  const lerp = (a, b2, t) => ({ px: a.px, py: a.py, pz: a.pz, cx: a.cx + (b2.cx - a.cx) * t, cy: a.cy + (b2.cy - a.cy) * t, u: a.u + (b2.u - a.u) * t, v: a.v + (b2.v - a.v) * t, g: a.g });
+  const fan = poly => { for (let k = 1; k + 1 < poly.length; k++) { emit(poly[0]); emit(poly[k]); emit(poly[k + 1]); } };
+  // the baked meshes are ordinary sprite meshes (quads or tight polygons); triangles that cross the floor line are cut in two,
+  // so the part under the floor can be laid flat while the rest stays standing
+  for (let t = 0; t + 2 < idx.length; t += 3) {
+    const tri = [V(idx[t]), V(idx[t + 1]), V(idx[t + 2])];
+    const ground = -tri[0].py;
+    const below = v => v.cy < ground - 1e-4;
+    const nb = tri.filter(below).length;
+    if (nb === 0 || nb === 3) { fan(tri); continue; }
+    const up = [], dn = [];
+    for (let k = 0; k < 3; k++) {
+      const p = tri[k], q = tri[(k + 1) % 3];
+      (below(p) ? dn : up).push(p);
+      if (below(p) !== below(q)) { const ip = lerp(p, q, (p.cy - ground) / (p.cy - q.cy)); ip.cy = ground; up.push(ip); dn.push(ip); }
+    }
+    fan(up); fan(dn);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(P, 3));
+  geo.setAttribute("corner", new THREE.Float32BufferAttribute(C, 2));
+  geo.setAttribute("uv", new THREE.Float32BufferAttribute(UV, 2));
+  geo.setAttribute("gc", new THREE.Float32BufferAttribute(GC, 3));
+  geo.setAttribute("big", new THREE.Float32BufferAttribute(BG, 1));
+  const mat = new THREE.ShaderMaterial({
+    uniforms: Object.assign({ map: { value: tex }, cutoff: { value: Math.max(0.2, b.cutoff || 0.4) } }, U), side: THREE.DoubleSide,
+    vertexShader: `attribute vec2 corner; attribute vec3 gc; attribute float big; uniform float yaw; varying vec2 vUv; varying float vDist;
+      void main() {
+        vUv = uv;
+        float wy = position.y + corner.y;
+        vec3 lp = wy < -0.0005 ? vec3(position.x + corner.x, 0.01, position.z - wy) : vec3(position.x + corner.x, wy, position.z);
+        float a = yaw * (1.0 - big), ca = cos(a), sa = sin(a);
+        vec3 d = lp - gc;
+        vec3 p = gc + vec3(ca * d.x + sa * d.z, d.y, -sa * d.x + ca * d.z);
+        vec4 mv = modelViewMatrix * vec4(p, 1.0); vDist = -mv.z; gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform sampler2D map; uniform float cutoff; varying vec2 vUv; ${COMMON_GLSL}
+      void main() { vec4 c = texture2D(map, vUv); if (c.a < cutoff) discard; gl_FragColor = vec4(grade(c.rgb), 1.0); }`
+  });
+  const mesh = new THREE.Mesh(geo, mat); mesh.frustumCulled = false;
+  return { mesh, geo, mat };
+}
+
+function buildMap(M) {
+  const group = new THREE.Group(), disposables = [];
+  const texCache = {};
+  const T = (key, wrap) => {
+    const ck = key + (wrap ? "w" : "");
+    if (texCache[ck]) return texCache[ck];
+    const t = texLoader.load(M.tex[key]); t.anisotropy = 4;
+    if (wrap) t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    disposables.push(t); return texCache[ck] = t;
+  };
+  const SHC = M.shadowColor;
+  U.fogNear.value = M.fog.start; U.fogFar.value = Math.max(M.fog.end, M.fog.start + 1);
+  U.fogCol.value.setRGB(M.fog.color[0], M.fog.color[1], M.fog.color[2]); U.fogAmt.value = Math.min(0.6, M.fog.amount * 1.6);
+  U.lightCol.value.setRGB(M.light[0], M.light[1], M.light[2]); U.sat.value = M.saturate;
+
+  // prop shadows: the game's flat shadow meshes, pre-rendered into one top-down mask per map
+  const SH_EXT = M.shadowMap ? M.shadowMap.ext : 64;
+  const shadowMask = M.shadowMap ? T(M.shadowMap.tex) : null;
+
+  // ground: the painted map image over the play area, the map's tile everywhere else, prop shadows on top
+  const G = M.ground || { tileSize: 2.56, center: [0, 0], y: 0 };
+  const area = M.area;
+  const gmat = new THREE.ShaderMaterial({
+    uniforms: Object.assign({
+      tile: { value: G.tile ? T(G.tile, true) : null }, gmap: { value: G.sub ? T(G.sub) : null }, shadows: { value: shadowMask }, hasShadow: { value: shadowMask ? 1 : 0 },
+      shColor: { value: new THREE.Vector4(SHC[0], SHC[1], SHC[2], SHC[3]) }, shExt: { value: SH_EXT },
+      tileSize: { value: G.tileSize || 2.56 }, areaC: { value: new THREE.Vector2(area.offset[0], area.offset[1]) },
+      areaS: { value: new THREE.Vector2(area.size[0], area.size[1]) }, hasSub: { value: G.sub ? 1 : 0 }, hasTile: { value: G.tile ? 1 : 0 },
+    }, U),
+    depthWrite: false,          // like Crumble: sprites draw over the floor, never cut by it
+    vertexShader: `varying vec3 vW; varying float vDist; void main() { vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz;
+      vec4 mv = viewMatrix * w; vDist = -mv.z; gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform sampler2D gmap, tile, shadows; uniform vec4 shColor; uniform float shExt, tileSize, hasSub, hasTile, hasShadow;
+      uniform vec2 areaC, areaS; varying vec3 vW; ${COMMON_GLSL}
+      void main() {
+        vec2 u = vec2(vW.x, -vW.z);                      // Unity x/z
+        vec3 c = hasTile > 0.5 ? texture2D(tile, u / tileSize).rgb : vec3(0.45, 0.6, 0.35);
+        if (hasSub > 0.5) {
+          vec2 guv = (u - areaC) / (2.0 * areaS) + 0.5;
+          float d = max(abs(u.x - areaC.x) - areaS.x, abs(u.y - areaC.y) - areaS.y);
+          c = mix(c, texture2D(gmap, clamp(guv, 0.0, 1.0)).rgb, 1.0 - smoothstep(-2.0, 1.0, d));
+        }
+        vec2 suv = vec2((vW.x + shExt) / (2.0 * shExt), (shExt - vW.z) / (2.0 * shExt));
+        float s = (hasShadow > 0.5 && suv.x > 0.0 && suv.x < 1.0 && suv.y > 0.0 && suv.y < 1.0) ? texture2D(shadows, suv).r : 0.0;
+        c = mix(c, c * shColor.rgb * 1.25, s * shColor.a * 1.6);
+        gl_FragColor = vec4(grade(c), 1.0);
+      }`
+  });
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), gmat);
+  ground.rotation.x = -Math.PI / 2; ground.position.y = G.y || 0; ground.renderOrder = -5; group.add(ground);
+  disposables.push(ground.geometry, gmat);
+
+  const solids = [];
+  for (const b of M.props) { const p = buildProps(b, T(b.tex), b.grp ? solids : null); group.add(p.mesh); disposables.push(p.geo, p.mat); }
+
+  // far background strips wrapped into rings round the camera (far = bigger ring); always upright
+  const rings = [];
+  const bgs = (M.bg || []).slice(0, 4);
+  const radii = [300, 260, 225, 195];
+  let skyTop = null;
+  bgs.forEach((b, i) => {
+    const R = radii[i] || 190, dist = Math.max(30, b.z + 40);
+    const ang = 2 * Math.atan(b.w / 2 / dist);
+    const repeats = Math.max(1, Math.round(2 * Math.PI / Math.max(0.05, ang)));
+    const h = Math.min(R * 0.9, R * b.h / dist);
+    let y0 = R * (b.y - b.py * b.h) / dist;
+    if (i === 0) { y0 = Math.min(y0, -0.12 * R); skyTop = b.top; }
+    const t = T(b.tex); const tw = t.clone(); tw.needsUpdate = true; tw.wrapS = THREE.RepeatWrapping; tw.repeat.set(repeats, 1); disposables.push(tw);
+    const mat = new THREE.MeshBasicMaterial({ map: tw, side: THREE.BackSide, alphaTest: 0.5, depthWrite: false, fog: false, color: U.lightCol.value });
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(R, R, h, 96, 1, true), mat);
+    m.userData.y = y0 + h / 2; m.renderOrder = -10 + i; group.add(m); rings.push(m); disposables.push(m.geometry, mat);
+  });
+  if (skyTop) scene.background = new THREE.Color(skyTop[0] / 255, skyTop[1] / 255, skyTop[2] / 255).multiply(U.lightCol.value);
+  else scene.background = new THREE.Color(M.fog.color[0], M.fog.color[1], M.fog.color[2]).multiplyScalar(0.85);
+
+  let bounds;
+  if (M.boundsXZ) { const [x, y, w, h] = M.boundsXZ; bounds = { x0: x, x1: x + w, z0: -(y + h), z1: -y }; }
+  else bounds = { x0: area.offset[0] - area.size[0], x1: area.offset[0] + area.size[0], z0: -(area.offset[1] + area.size[1]), z1: -(area.offset[1] - area.size[1]) };
+  const spawn = { x: (bounds.x0 + bounds.x1) / 2, z: (bounds.z0 + bounds.z1) / 2 };
+  scene.add(group);
+  return { group, rings, solids: solids.length ? solids : (M.solids || []), bounds, spawn, disposables, id: M.id };
+}
+function disposeMap() {
+  if (!world) return;
+  scene.remove(world.group);
+  for (const d of world.disposables) if (d && d.dispose) d.dispose();
+  world = null;
+}
+function collide(o, size) {
+  if (!world) return;
+  for (const s of world.solids) {
+    const dx = o.x - s[0], dz = o.z - s[1], r = s[2] + 0.3 * size, d2 = dx * dx + dz * dz;
+    if (d2 < r * r && d2 > 1e-8) { const d = Math.sqrt(d2), k = (r - d) / d; o.x += dx * k; o.z += dz * k; }
+  }
+  const b = world.bounds;
+  o.x = Math.max(b.x0 + 0.5, Math.min(b.x1 - 0.5, o.x)); o.z = Math.max(b.z0 + 0.5, Math.min(b.z1 - 0.5, o.z));
+}
+
+/* ================================================================ cookies (shared loader) */
+const cookieLoads = {};
+function ensureCookie(id) {
+  if (D.cookies[id]) return Promise.resolve(D.cookies[id]);
+  if (!cookieLoads[id]) cookieLoads[id] = loadScript("cookies/" + id + ".js").then(() => D.cookies[id]);
+  return cookieLoads[id];
+}
+function evalKeys(keys, t) {
+  let k = keys[0];
+  for (let i = 0; i < keys.length; i++) { if (keys[i][0] <= t + 1e-6) k = keys[i]; else break; }
+  const d = k[0] >= 0 ? t - k[0] : 0;
+  return ((k[1] * d + k[2]) * d + k[3]) * d + k[4];
+}
+
+// One animated cookie: root (faces camera) -> "Image" node (animated by the clip curves) -> sprite quad (pivot offset)
+class Avatar {
+  constructor() {
+    this.root = new THREE.Group(); this.image = new THREE.Group(); this.root.add(this.image);
+    this.mat = new THREE.MeshBasicMaterial({ transparent: true, alphaTest: 0.02, side: THREE.DoubleSide, color: U.lightCol.value });
+    this.quad = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), this.mat); this.image.add(this.quad);
+    this.shadow = new THREE.Mesh(new THREE.CircleGeometry(0.55, 24), new THREE.MeshBasicMaterial({ color: 0x223344, transparent: true, opacity: 0.45, depthWrite: false }));
+    this.shadow.rotation.x = -Math.PI / 2; this.shadow.renderOrder = -4;
+    scene.add(this.root); scene.add(this.shadow);
+    this.data = null; this.tex = null; this.cur = null; this.def = null; this.id = null;
+    this.anim = { state: "idle", t: 0, loops: 0, onDone: null, maxLoops: 0 }; this.plays = 0;
+    this.root.visible = this.shadow.visible = false;
+  }
+  setCookie(C) {
+    this.data = C; this.id = C.id; this.cur = null;
+    this.def = C.idleSprite || Object.keys(C.frames).find(n => /_idle$/.test(n)) || Object.keys(C.frames)[0];
+    if (this.tex) this.tex.dispose();
+    this.tex = texLoader.load(C.sheetUrl); this.tex.minFilter = THREE.LinearFilter; this.tex.generateMipmaps = false;
+    this.mat.map = this.tex; this.mat.needsUpdate = true;
+    if (!C.clips[this.anim.state]) this.anim.state = "idle";
+  }
+  has(state) { const c = this.data && this.data.clips[state]; return !!(c && c.tracks.length); }
+  play(state, opts) {
+    if (!this.data || !this.data.clips[state]) return false;
+    const a = this.anim; a.state = state; a.t = 0; a.loops = 0; a.onDone = (opts && opts.onDone) || null; a.maxLoops = (opts && opts.loops) || 0;
+    this.plays++; return true;
+  }
+  step(dt) {
+    const c = this.data.clips[this.anim.state], a = this.anim;
+    a.t += dt;
+    if (a.t >= c.length) {
+      if (c.loop && !(a.maxLoops && a.loops + 1 >= a.maxLoops)) { a.t = c.length > 0 ? a.t % c.length : 0; a.loops++; }
+      else { a.t = c.length; const cb = a.onDone; a.onDone = null; if (cb) cb(); }
+    }
+  }
+  pose() {
+    const clip = this.data.clips[this.anim.state], t = this.anim.t;
+    const p = { x: 0, y: 0, rz: 0, sx: 1, sy: 1, sprite: this.def };   // unanimated properties -> prefab defaults
+    for (const tr of clip.tracks) {
+      if (tr.target === "sprite") {
+        const k = tr.keys.filter(k => k[0] <= t + 1e-6).pop() || tr.keys[0];
+        const name = clip.sprites[Math.round(k[4])];
+        if (name && this.data.frames[name]) p.sprite = name;
+        continue;
+      }
+      const v = evalKeys(tr.keys, t);
+      if (tr.target === "pos") { if (tr.comp === 0) p.x = v; else if (tr.comp === 1) p.y = v; }
+      else if (tr.target === "euler") { if (tr.comp === 2) p.rz = v; }
+      else if (tr.target === "scale") { if (tr.comp === 0) p.sx = v; else if (tr.comp === 1) p.sy = v; }
+    }
+    return p;
+  }
+  setFrame(name) {
+    if (name === this.cur) return;
+    const f = this.data.frames[name]; if (!f) return;
+    this.cur = name;
+    const w = f.w / f.ppu, h = f.h / f.ppu, SW = this.data.sheet[0], SH = this.data.sheet[1];
+    this.quad.scale.set(w, h, 1);
+    this.quad.position.set((0.5 - f.px) * w, (0.5 - f.py) * h, 0);
+    this.tex.repeat.set(f.w / SW, f.h / SH);
+    this.tex.offset.set(f.x / SW, 1 - (f.y + f.h) / SH);
+  }
+  draw(x, y, z, face, size, hidden, basisQ) {
+    if (!this.data) { this.root.visible = this.shadow.visible = false; return null; }
+    const p = this.pose(); this.setFrame(p.sprite);
+    this.root.quaternion.copy(basisQ);
+    this.root.position.set(x, y, z);
+    this.root.scale.set(face * size, size, size);
+    this.root.visible = this.shadow.visible = !hidden;
+    this.image.position.set(p.x, p.y, 0); this.image.rotation.set(0, 0, p.rz * Math.PI / 180); this.image.scale.set(p.sx, p.sy, 1);
+    this.shadow.position.set(x, 0.02, z);
+    const sh = Math.max(0.35, 1 - y / 4) * Math.max(0.2, Math.min(1.2, p.sx)) * size;
+    this.shadow.scale.set(1.2 * sh, 0.55 * sh, 1);
+    return p;
+  }
+  dispose() { scene.remove(this.root); scene.remove(this.shadow); if (this.tex) this.tex.dispose(); this.mat.dispose(); this.quad.geometry.dispose(); this.shadow.geometry.dispose(); this.shadow.material.dispose(); }
+}
+
+/* ================================================================ labels (name tags + chat bubbles over heads) */
+function makeLabel(name, owner) {
+  const tag = document.createElement("div"); tag.className = "nameTag" + (owner ? " owner" : "");
+  tag.innerHTML = esc(name) + (owner ? ' <span class="tag">(OWNER)</span>' : "");
+  const bub = document.createElement("div"); bub.className = "bubble"; bub.style.display = "none";
+  $("labels").append(tag, bub);
+  return { tag, bub, until: 0 };
+}
+function showBubble(L, text) { if (!L) return; L.bub.textContent = text; L.until = performance.now() + 6000 + text.length * 40; }
+const projV = new THREE.Vector3();
+function placeLabel(L, x, y, z, visible) {
+  projV.set(x, y, z).project(camera);
+  const on = visible && projV.z < 1 && Math.abs(projV.x) < 1.2 && Math.abs(projV.y) < 1.2;
+  const sx = (projV.x * 0.5 + 0.5) * innerWidth, sy = (-projV.y * 0.5 + 0.5) * innerHeight;
+  L.tag.style.display = on && S.names ? "" : "none";
+  if (on) { L.tag.style.left = sx + "px"; L.tag.style.top = sy + "px"; }
+  const showB = on && S.bubbles && performance.now() < L.until;
+  L.bub.style.display = showB ? "" : "none";
+  if (showB) { L.bub.style.left = sx + "px"; L.bub.style.top = (sy - (S.names ? 20 : 4)) + "px"; }
+}
+function removeLabel(L) { L.tag.remove(); L.bub.remove(); }
+
+/* ================================================================ local player */
+const me = { x: 0, z: 0, y: 0, vy: 0, fx: 0, fz: 0, face: 1, action: null, flung: false, hidden: false, hideTimer: 0, moving: false, running: false };
+const meAv = new Avatar();
+let meLabel = null;
+const ACTIONS = [
+  { key: "1", label: "Skill (skill0)", state: "skill0" },
+  { key: "2", label: "Skill 2 (skill1)", state: "skill1" },
+  { key: "3", label: "Skill 3 (skill2)", state: "skill2" },
+  { key: "4", label: "Skill 4 (skill3)", state: "skill3" },
+  { key: "5", label: "Interaction", state: "interaction" },
+  { key: "6", label: "Die (fling)", state: "die" },
+  { key: "7", label: "Despawn", state: "despawn" },
+  { key: "8", label: "Spawn", state: "spawn" },
+];
+function endAction() { me.action = null; }
+function screenSide(vx, vz) { return vx * Math.cos(camYaw) - vz * Math.sin(camYaw); }
+function doAction(a) {
+  if (!meAv.has(a.state)) return;
+  me.hidden = false; me.hideTimer = 0; me.action = a.state;
+  if (a.state === "die") {
+    const ang = Math.random() * Math.PI * 2, sp = 4 + Math.random() * 3;
+    me.fx = Math.cos(ang) * sp; me.fz = Math.sin(ang) * sp;
+    me.vy = 8 + Math.random() * 2; me.y = Math.max(me.y, 0.001); me.flung = true;
+    if (Math.abs(me.fx) > 0.2) me.face = screenSide(me.fx, me.fz) >= 0 ? -1 : 1;
+    meAv.play("die");
+  } else if (a.state === "despawn") {
+    meAv.play("despawn", { onDone: () => { me.hidden = true; me.hideTimer = 0.6; } });
+  } else meAv.play(a.state, { loops: 1, onDone: endAction });
+  sendState(true);
+}
+function buildActionList() {
+  const ms = $("mSkills"); ms.innerHTML = "";
+  for (const a of ACTIONS) {
+    const b = document.createElement("button"); b.className = "mb sm" + (meAv.has(a.state) ? "" : " dim"); b.textContent = a.key;
+    b.title = a.label; b.addEventListener("pointerdown", e => { e.preventDefault(); doAction(a); });
+    ms.appendChild(b);
+  }
+  const box = $("actions"); box.innerHTML = "";
+  for (const a of ACTIONS) {
+    const ok = meAv.has(a.state);
+    const d = document.createElement("div");
+    d.textContent = a.key + " - " + a.label + (ok ? "" : " (not for this cookie)");
+    d.dataset.state = a.state; if (!ok) d.className = "dim";
+    d.onclick = () => doAction(a);
+    box.appendChild(d);
+  }
+}
+function setHint() {
+  $("mOwner").style.display = net.owner ? "" : "none";
+  $("hint").innerHTML = "WASD - Walk | SHIFT - Run | SPACE - Jump | 1-8 - Actions<br>/ - Chat | P - Hide chat | M - Menu" +
+    (net.owner ? " | O - Owner menu" : "") + " | Drag/Scroll - Camera | R - Reset camera";
+}
+
+async function setMyCookie(id) {
+  const C = await ensureCookie(id);
+  meAv.setCookie(C); curCookie = id;
+  me.action = null; meAv.play("idle"); buildActionList();
+  store.set("crumble.cookie", id);
+}
+async function enterMap(id) {
+  if (!D.maps[id]) await loadScript("maps/" + id + ".js");
+  disposeMap(); world = buildMap(D.maps[id]);
+  for (const k in D.maps) if (k !== id) delete D.maps[k];
+  curMap = id; store.set("crumble.map", id);
+  for (const rid of [...remotes.keys()]) dropRemote(rid);
+  for (const hid of [...hounds.keys()]) dropHound(hid);
+  clearItems();
+  me.x = world.spawn.x + (Math.random() - 0.5) * 3; me.z = world.spawn.z + (Math.random() - 0.5) * 3; me.y = 0; me.vy = 0; me.flung = false; me.hidden = false;
+  for (let i = 0; i < 6; i++) collide(me, S.size);
+  camYaw = CAM_DEFAULT.yaw; camPitch = CAM_DEFAULT.pitch; camDist = CAM_DEFAULT.dist;
+}
+
+// Play / Apply / Go button
+async function go() {
+  if (joining) return;
+  $("menuErr").textContent = "";
+  if (!playing) {
+    const raw = $("nameIn").value.trim();
+    const nm = raw.startsWith("aD:") ? raw.slice(3) : raw;
+    if (!raw) { $("menuErr").textContent = "Type a name first."; $("nameIn").focus(); return; }
+    if (nm.length > 32) { $("menuErr").textContent = "Names can be up to 32 characters."; return; }
+    joining = true; $("play").disabled = true;
+    const start = async () => {
+      store.set("crumble.name", raw);
+      try { await Promise.all([setMyCookie(selCookie), enterMap(selMap)]); }
+      catch (e) { $("menuErr").textContent = "Couldn't load: " + e.message; joining = false; $("play").disabled = false; return; }
+      if (!net.joined) { net.name = (raw.startsWith("aD:") ? (nm.trim() || "epicfridge") : raw); net.owner = false; }
+      meLabel = makeLabel(net.name, net.owner);
+      playSpawn();
+      document.body.classList.add("playing"); playing = true; joining = false; $("play").disabled = false;
+      $("nameIn").disabled = true; setHint(); renderPlayerList(); addSys(net.offline || !net.ok ? "Playing offline." : "Welcome, " + net.name + "!");
+    };
+    if (net.ok) { pendingJoin = start; netSend({ t: "join", name: raw, cookie: selCookie, map: selMap }); }
+    else { net.offline = true; start(); }
+    return;
+  }
+  // already playing: apply cookie / map change without respawning if the map stays the same
+  joining = true; $("play").disabled = true;
+  const changed = selCookie !== curCookie || selMap !== curMap;
+  try {
+    if (selCookie !== curCookie) { await setMyCookie(selCookie); netSend({ t: "set", cookie: selCookie }); }
+    if (selMap !== curMap) { await enterMap(selMap); netSend({ t: "map", map: selMap }); }
+  } catch (e) { $("menuErr").textContent = "Couldn't load: " + e.message; }
+  if (changed) playSpawn();
+  joining = false; $("play").disabled = false; closeMenu(); renderPlayerList(); sendState(true);
+}
+function playSpawn() {
+  if (!meAv.has("spawn")) return;
+  me.hidden = false; me.action = "spawn"; meAv.play("spawn", { onDone: endAction }); sendState(true);
+}
+
+/* ================================================================ remote players */
+const remotes = new Map();   // id -> { av, label, x, y, z, tx, ty, tz, f, a, q, h, s, r, cookie, name, owner, seen }
+function getRoster(id) { return net.roster.find(p => p.id === id); }
+function ensureRemote(id) {
+  let r = remotes.get(id);
+  if (r) return r;
+  const info = getRoster(id); if (!info || info.map !== curMap) return null;
+  r = { av: new Avatar(), label: makeLabel(info.name, info.owner), x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, f: 1, a: "idle", q: -1, h: 0, s: 1, r: 0, cookie: null, name: info.name, owner: info.owner, seen: performance.now(), fresh: true };
+  remotes.set(id, r);
+  setRemoteCookie(r, info.cookie);
+  return r;
+}
+function setRemoteCookie(r, id) {
+  if (r.cookie === id) return; r.cookie = id;
+  ensureCookie(id).then(C => { if (r.cookie === id && !r.dead) { r.av.setCookie(C); r.av.play(C.clips[r.a] ? r.a : "idle"); } }).catch(() => {});
+}
+function leaveRemote(id) {
+  const r = remotes.get(id); if (!r || r.leaving) return;
+  if (!r.av.data || r.h || !r.av.has("despawn")) return dropRemote(id);
+  r.av.play("despawn"); r.leaving = performance.now() + r.av.data.clips.despawn.length * 1000 + 150;
+  r.label.tag.style.visibility = "hidden";
+}
+function dropRemote(id) { const r = remotes.get(id); if (!r) return; r.dead = true; r.av.dispose(); removeLabel(r.label); remotes.delete(id); }
+function onSnap(list) {
+  const now = performance.now();
+  for (const e of list) {
+    const [id, x, y, z, f, a, q, h, s, run] = e;
+    if (id === net.id) continue;
+    let r = ensureRemote(id); if (!r) continue;
+    if (r.leaving) { dropRemote(id); r = ensureRemote(id); if (!r) continue; }   // came straight back
+    r.tx = x; r.ty = y; r.tz = z; r.f = f; r.h = h; r.s = s; r.r = run; r.seen = now;
+    if (r.fresh || Math.hypot(r.x - x, r.z - z) > 10) { r.x = x; r.y = y; r.z = z; r.fresh = false; }
+    if ((a !== r.a || q !== r.q) && r.av.data) { r.av.play(r.av.data.clips[a] ? a : "idle"); }
+    r.a = a; r.q = q;
+  }
+}
+function onRoster(m) {
+  net.roster = m.players || []; net.counts = m.counts || {}; net.max = m.max || 100; net.online = net.roster.length;
+  for (const [id, r] of remotes) {
+    const info = getRoster(id);
+    if (!info || info.map !== curMap) leaveRemote(id);
+    else setRemoteCookie(r, info.cookie);
+  }
+  renderPlayerList(); renderOwner(); updateCounts();
+  setConn(`Connected · ${net.online}/${net.max} online`, "ok");
+}
+
+/* ================================================================ owner nonsense: Cake Hounds + item rain */
+const hounds = new Map();     // hid -> { av, x, z, tx, tz, f, a, q }
+let houndData = null;
+function loadHound() {
+  if (!houndData) houndData = loadScript("enemies/m10111.js").then(() => D.cookies.m10111);
+  return houndData;
+}
+function onHounds(list) {
+  const seen = new Set();
+  for (const [id, x, z, f, a, q] of list) {
+    seen.add(id);
+    let h = hounds.get(id);
+    if (!h) {
+      h = { av: new Avatar(), x, z, tx: x, tz: z, f, a: null, q: -1 };
+      hounds.set(id, h);
+      loadHound().then(C => { if (hounds.get(id) === h) { h.av.setCookie(C); h.a = null; } });
+    }
+    h.tx = x; h.tz = z; h.f = f;
+    if (h.av.data && (a !== h.a || q !== h.q)) {
+      h.av.play(h.av.data.clips[a] ? a : "idle", { loops: a === "die" ? 1 : 0 });
+      if (a === "die" && h.a !== null && !h.dieT) {          // defeated: boom, then it gets flung into the air
+        h.dieT = performance.now() / 1000; const ang = Math.random() * Math.PI * 2; h.dvx = Math.cos(ang) * 4; h.dvz = Math.sin(ang) * 4;
+        sfx("boom", Math.max(0, 1 - Math.hypot(h.x - me.x, h.z - me.z) / 30));
+      }
+      h.a = a; h.q = q;
+    }
+  }
+  for (const id of [...hounds.keys()]) if (!seen.has(id)) dropHound(id);
+}
+function dropHound(id) { const h = hounds.get(id); if (!h) return; h.av.dispose(); hounds.delete(id); }
+function flingMe(dx, dz) {
+  if (!meAv.data) return;
+  const sp = 6 + Math.random() * 1.5;
+  me.hidden = false; me.action = "die"; me.flung = true;
+  me.fx = dx * sp; me.fz = dz * sp; me.vy = 9; me.y = Math.max(me.y, 0.001);
+  me.face = screenSide(me.fx, me.fz) >= 0 ? -1 : 1;
+  meAv.play(meAv.data.clips.die ? "die" : "idle");
+  sendState(true);
+}
+
+const itemTex = { coin: texLoader.load("ui/icon_coin.png"), crystal: texLoader.load("ui/icon_crystal.png") };
+const itemMats = { coin: new THREE.SpriteMaterial({ map: itemTex.coin, alphaTest: 0.3 }), crystal: new THREE.SpriteMaterial({ map: itemTex.crystal, alphaTest: 0.3 }) };
+const itemsOnMap = new Map();   // iid -> { spr, x, z, y, vy, delay, kind, grabbed }
+function addItems(list) {
+  for (const [id, kind, x, z, delay] of list) {
+    if (itemsOnMap.has(id)) continue;
+    const spr = new THREE.Sprite(itemMats[kind] || itemMats.coin);
+    spr.scale.set(0.75, 0.75, 1); spr.visible = false; scene.add(spr);
+    // falls from the sky after its delay; position is worked out from the clock so it doesn't depend on frame rate
+    itemsOnMap.set(id, { spr, x, z, y: 0, t0: performance.now() / 1000 + delay, h: delay > 0 ? 16 + Math.random() * 6 : 0, kind, grabbed: false, ph: Math.random() * 6 });
+  }
+}
+function removeItem(id) { const it = itemsOnMap.get(id); if (!it) return; scene.remove(it.spr); itemsOnMap.delete(id); }
+function clearItems() { for (const id of [...itemsOnMap.keys()]) removeItem(id); }
+function stepItems(dt, t) {
+  const G = 25;
+  for (const [id, it] of itemsOnMap) {
+    const age = t - it.t0;
+    if (age < 0) { it.spr.visible = false; continue; }
+    const tf = Math.sqrt(2 * it.h / G);
+    if (age < tf) it.y = it.h - 0.5 * G * age * age;
+    else { const tb = age - tf; it.y = it.h > 0 && tb < 0.32 ? Math.max(0, 4 * tb - 12.5 * tb * tb) : 0; }
+    it.spr.visible = !it.grabbed;
+    it.spr.position.set(it.x, 0.45 + it.y + (it.y === 0 ? Math.sin(t * 3 + it.ph) * 0.08 : 0), it.z);
+    if (!it.grabbed && it.y < 1.2 && !me.hidden && Math.hypot(it.x - me.x, it.z - me.z) < 0.9) {
+      it.grabbed = true; sfx("collect", 0.8); netSend({ t: "grab", id });
+      setTimeout(() => { if (itemsOnMap.get(id) === it) removeItem(id); }, 1500);
+    }
+  }
+}
+
+/* ================================================================ HUD: player list, owner menu, chat */
+function nameHTML(name, owner) { return `<span class="${owner ? "owner" : ""}">${esc(name)}${owner ? ' <span class="tag">(OWNER)</span>' : ""}</span>`; }
+function renderPlayerList() {
+  const list = net.offline || !net.joined ? [{ id: net.id, name: net.name, owner: net.owner, cookie: curCookie, map: curMap }] : net.roster;
+  $("plistHead").textContent = `Players: ${list.length}/${net.max}`;
+  $("plistRows").innerHTML = list.map(p => {
+    const ci = COOKIE_INFO[p.cookie] || {};
+    return `<div class="prow${p.id === net.id ? " me" : ""}"><img src="${ci.thumb || ""}" alt="" title="${esc(cookieLabel(p.cookie))}"><span class="nm">${nameHTML(p.name, p.owner)}<span class="sub">${esc(mapLabel(p.map))}${p.map === curMap ? " · here" : ""}</span></span></div>`;
+  }).join("");
+}
+function renderOwner() {
+  if (!net.owner) return;
+  $("ownerList").innerHTML = net.roster.map(p => `<div class="orow"><span>${nameHTML(p.name, p.owner)} ${p.alt ? '<span class="alt">[alt?]</span>' : ""}<br><span class="tag" style="color:var(--dim)">${esc(mapLabel(p.map))} · net #${p.ipTag ?? "-"}</span></span>${p.owner || p.id === net.id ? "" : `<button data-kick="${p.id}">Kick</button>`}</div>`).join("") || '<div class="tag">Nobody here yet.</div>';
+}
+$("ownerTools").addEventListener("click", e => {
+  const b = e.target.closest("[data-tool]"); if (!b) return;
+  const k = b.dataset.tool, wb = world && world.bounds;
+  if (k === "hound") netSend({ t: "hound" });
+  else if (k === "coin" || k === "crystal") netSend({ t: "rain", kind: k, b: wb ? [wb.x0, wb.x1, wb.z0, wb.z1] : null });
+  else if (k === "clear") netSend({ t: "clear" });
+});
+$("ownerList").addEventListener("click", e => { const b = e.target.closest("[data-kick]"); if (b) netSend({ t: "kick", id: +b.dataset.kick }); });
+
+const chatLog = $("chatLog");
+function trimChat() { while (chatLog.children.length > 60) chatLog.firstChild.remove(); chatLog.scrollTop = chatLog.scrollHeight; }
+function ageOut(el) { setTimeout(() => el.classList.add("old"), 20000); }
+function addChat(m) {
+  const ci = COOKIE_INFO[m.cookie] || {};
+  const row = document.createElement("div"); row.className = "msg";
+  row.style.setProperty("--c", m.owner ? "#5fe6ff" : (ci.accent || "#ffcf6a"));
+  row.innerHTML = `<div class="head"><img src="${ci.face || ci.thumb || ""}" alt=""></div><div class="msgBody"><div class="msgName">${esc(m.name)}${m.owner ? ' <span class="tag">(OWNER)</span>' : ""}</div><div class="msgText"></div></div>`;
+  row.querySelector(".msgText").textContent = m.text;
+  chatLog.appendChild(row); ageOut(row); trimChat();
+}
+function addSys(text) { const d = document.createElement("div"); d.className = "sys"; d.textContent = text; chatLog.appendChild(d); ageOut(d); trimChat(); }
+function openChat() { $("chat").classList.add("open"); $("chat").classList.remove("hidden"); $("chatIn").focus(); chatLog.scrollTop = chatLog.scrollHeight; }
+function closeChat() { $("chat").classList.remove("open"); $("chatIn").blur(); }
+function sendChat() {
+  const t = $("chatIn").value.trim(); $("chatIn").value = "";
+  if (t) {
+    if (net.joined && net.ok) netSend({ t: "chat", text: t });
+    else { addChat({ name: net.name, owner: net.owner, cookie: curCookie, text: t }); sfx("chime", 0.8); showBubble(meLabel, t); }
+  }
+  closeChat();
+}
+$("chatSend").onclick = sendChat;
+
+$("chatIn").addEventListener("keydown", e => { e.stopPropagation(); if (e.key === "Enter") sendChat(); else if (e.key === "Escape") closeChat(); });
+
+/* ================================================================ input */
+const keys = {};
+addEventListener("keydown", e => {
+  if (!playing) { if (e.code === "Enter" && document.activeElement === $("nameIn")) go(); return; }
+  if (typing()) return;
+  if (e.code === "Slash") { e.preventDefault(); openChat(); return; }
+  if (e.code === "KeyM" || (e.code === "Escape" && document.body.classList.contains("menuOpen"))) {
+    if (document.body.classList.contains("menuOpen")) closeMenu(); else openMenu();
+    return;
+  }
+  if (document.body.classList.contains("menuOpen")) return;
+  keys[e.code] = true;
+  if (e.code === "KeyP") $("chat").classList.toggle("hidden");
+  if (e.code === "KeyO" && net.owner) { document.body.classList.toggle("ownerOpen"); renderOwner(); }
+  if (e.code === "Space") { e.preventDefault(); if (me.y <= 0 && !me.flung && !me.hidden) { me.vy = 8; sfx("boing", 0.8); netSend({ t: "jump" }); } }
+  if (e.code === "KeyR") { camYaw = CAM_DEFAULT.yaw; camPitch = CAM_DEFAULT.pitch; camDist = CAM_DEFAULT.dist; }
+  const a = ACTIONS.find(x => "Digit" + x.key === e.code || "Numpad" + x.key === e.code);
+  if (a && !e.repeat) doAction(a);
+});
+addEventListener("keyup", e => { keys[e.code] = false; });
+addEventListener("blur", () => { for (const k in keys) keys[k] = false; });
+$("view").addEventListener("wheel", e => { camDist = Math.max(4, Math.min(32, camDist * Math.exp(e.deltaY * 0.001))); }, { passive: true });
+const view = $("view"); let drag = null;
+view.addEventListener("pointerdown", e => {
+  drag = { x: e.clientX, y: e.clientY }; view.setPointerCapture(e.pointerId); view.classList.add("drag");
+  if (typing()) document.activeElement.blur(); closeChat(); $("setPanel").classList.remove("show"); $("setBtn").classList.remove("on");
+});
+view.addEventListener("pointermove", e => {
+  if (!drag) return;
+  camYaw -= (e.clientX - drag.x) * 0.006;
+  camPitch = Math.max(0.05, Math.min(1.25, camPitch + (e.clientY - drag.y) * 0.006));
+  drag.x = e.clientX; drag.y = e.clientY;
+});
+const endDrag = () => { drag = null; view.classList.remove("drag"); };
+view.addEventListener("pointerup", endDrag); view.addEventListener("pointercancel", endDrag);
+
+/* ================================================================ mobile controls (turn on in Settings) */
+const joy = { active: false, id: null, x: 0, y: 0, mag: 0 };
+let mRun = false;
+{
+  const pad = $("joy"), knob = $("joyKnob");
+  const upd = e => {
+    const r = pad.getBoundingClientRect(), R = r.width / 2;
+    let dx = e.clientX - (r.left + R), dy = e.clientY - (r.top + R);
+    const d = Math.hypot(dx, dy), lim = R * 0.8;
+    if (d > lim) { dx *= lim / d; dy *= lim / d; }
+    joy.x = dx / lim; joy.y = dy / lim; joy.mag = Math.min(1, d / lim);
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+  };
+  pad.addEventListener("pointerdown", e => { e.preventDefault(); joy.active = true; joy.id = e.pointerId; pad.setPointerCapture(e.pointerId); upd(e); });
+  pad.addEventListener("pointermove", e => { if (joy.active && e.pointerId === joy.id) upd(e); });
+  const end = e => { if (e.pointerId !== joy.id) return; joy.active = false; joy.x = joy.y = joy.mag = 0; knob.style.transform = ""; };
+  pad.addEventListener("pointerup", end); pad.addEventListener("pointercancel", end);
+  $("mobile").addEventListener("pointerdown", e => {
+    const b = e.target.closest("[data-m]"); if (!b) return;
+    e.preventDefault(); sfx("tap", 0.6);
+    const k = b.dataset.m;
+    if (k === "jump") { if (me.y <= 0 && !me.flung && !me.hidden) { me.vy = 8; sfx("boing", 0.8); netSend({ t: "jump" }); } }
+    else if (k === "run") { mRun = !mRun; b.classList.toggle("on", mRun); }
+    else if (k === "chat") { if ($("chat").classList.contains("open")) closeChat(); else openChat(); }
+    else if (k === "menu") { if (document.body.classList.contains("menuOpen")) closeMenu(); else openMenu(); }
+    else if (k === "owner" && net.owner) { document.body.classList.toggle("ownerOpen"); renderOwner(); }
+    else if (k === "cam") { camYaw = CAM_DEFAULT.yaw; camPitch = CAM_DEFAULT.pitch; camDist = CAM_DEFAULT.dist; }
+  });
+}
+// two-finger pinch on the game view zooms the camera
+const touches = new Map(); let pinch0 = 0, pinchDist0 = 0;
+view.addEventListener("pointerdown", e => { touches.set(e.pointerId, e); if (touches.size === 2) { const [a, b] = [...touches.values()]; pinch0 = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); pinchDist0 = camDist; } });
+view.addEventListener("pointermove", e => {
+  if (!touches.has(e.pointerId)) return; touches.set(e.pointerId, e);
+  if (touches.size === 2 && pinch0 > 0) { const [a, b] = [...touches.values()]; const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); camDist = Math.max(4, Math.min(32, pinchDist0 * pinch0 / Math.max(20, d))); drag = null; }
+});
+const tEnd = e => { touches.delete(e.pointerId); if (touches.size < 2) pinch0 = 0; };
+view.addEventListener("pointerup", tEnd); view.addEventListener("pointercancel", tEnd);
+
+/* ================================================================ state sync */
+let lastSent = 0, lastKey = "";
+function sendState(force) {
+  if (!net.joined || !net.ok) return;
+  const st = [+me.x.toFixed(3), +me.y.toFixed(3), +me.z.toFixed(3), me.face, meAv.anim.state, meAv.plays, me.hidden ? 1 : 0, +S.size.toFixed(2), me.running ? 1 : 0];
+  const k = st.join(",");
+  const now = performance.now();
+  if (force || (k !== lastKey && now - lastSent > 66) || now - lastSent > 1000) { netSend({ t: "st", s: st }); lastSent = now; lastKey = k; }
+}
+
+/* ================================================================ loop */
+const WALK = 3.0, RUN = 5.6, JUMP_GRAV = 22, WALK_ANIM = 0.8, RUN_ANIM = 1.25;
+const basis = new THREE.Matrix4(), basisQ = new THREE.Quaternion(), fwd = new THREE.Vector3();
+let last = performance.now();
+function frame(now) {
+  requestAnimationFrame(frame);
+  const rdt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (!playing || !world || !meAv.data) return;
+  const dt = rdt * S.spd;
+  const menuUp = document.body.classList.contains("menuOpen");
+
+  // ---- local movement
+  let mx = 0, mz = 0;
+  if (!me.flung && !me.hidden && !menuUp && !typing()) {
+    let f = 0, r = 0;
+    if (keys.KeyW || keys.ArrowUp) f += 1;
+    if (keys.KeyS || keys.ArrowDown) f -= 1;
+    if (keys.KeyD || keys.ArrowRight) r += 1;
+    if (keys.KeyA || keys.ArrowLeft) r -= 1;
+    if (S.mobile && joy.active && joy.mag > 0.15) { f = -joy.y; r = joy.x; }
+    const l = Math.hypot(f, r);
+    if (l > 0) { f /= l; r /= l; mx = -Math.sin(camYaw) * f + Math.cos(camYaw) * r; mz = -Math.cos(camYaw) * f - Math.sin(camYaw) * r; }
+  }
+  me.moving = Math.hypot(mx, mz) > 0;
+  me.running = me.moving && (keys.ShiftLeft || keys.ShiftRight || (S.mobile && (mRun || (joy.active && joy.mag > 0.92))));
+  const sp = me.running ? RUN : WALK;
+  me.x += mx * sp * rdt; me.z += mz * sp * rdt;
+  if (me.moving) { const s = screenSide(mx, mz); if (s > 0.1) me.face = 1; else if (s < -0.1) me.face = -1; }
+  if (me.y > 0 || me.vy > 0) {
+    me.vy -= JUMP_GRAV * rdt; me.y += me.vy * rdt;
+    if (me.flung) { me.x += me.fx * rdt; me.z += me.fz * rdt; }
+    if (me.y <= 0) { me.y = 0; me.vy = 0; if (me.flung) { me.flung = false; me.fx = me.fz = 0; if (me.action === "die") endAction(); } }
+  }
+  if (me.hidden) { me.hideTimer -= rdt; if (me.hideTimer <= 0) { me.hidden = false; me.action = "spawn"; meAv.play("spawn", { onDone: endAction }); } }
+  collide(me, S.size);
+  if (!me.action) { const want = me.moving ? "run" : "idle"; if (meAv.anim.state !== want) meAv.play(want); }
+  const animRate = (!me.action && meAv.anim.state === "run") ? (me.running ? RUN_ANIM : WALK_ANIM) : 1;
+  meAv.step(dt * animRate);
+  sendState(false);
+
+  // ---- camera
+  const tx = me.x, ty = 0.8, tz = me.z, cp = Math.cos(camPitch);
+  camera.position.set(tx + Math.sin(camYaw) * cp * camDist, Math.max(0.3, ty + Math.sin(camPitch) * camDist), tz + Math.cos(camYaw) * cp * camDist);
+  camera.lookAt(tx, ty, tz); camera.updateMatrixWorld();
+  camRight.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+  camUp.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+  fwd.crossVectors(camRight, camUp); basis.makeBasis(camRight, camUp, fwd); basisQ.setFromRotationMatrix(basis);
+  U.yaw.value = S.bill ? camYaw : 0;
+  for (const r of world.rings) r.position.set(camera.position.x, r.userData.y, camera.position.z);
+
+  // ---- draw me
+  meAv.draw(me.x, me.y, me.z, me.face, S.size, me.hidden, basisQ);
+  const hh = ((meAv.data.headHeight || 1.4) + 0.35) * S.size;
+  placeLabel(meLabel, me.x, me.y + hh, me.z, !me.hidden);
+
+  // ---- remotes
+  const k = Math.min(1, rdt * 12);
+  for (const [id, r] of remotes) {
+    if (r.leaving) { if (now > r.leaving) { dropRemote(id); continue; } }
+    else if (now - r.seen > 4000) { leaveRemote(id); continue; }
+    r.x += (r.tx - r.x) * k; r.y += (r.ty - r.y) * k; r.z += (r.tz - r.z) * k;
+    if (r.av.data) {
+      const rate = r.a === "run" ? (r.r ? RUN_ANIM : WALK_ANIM) : 1;
+      r.av.step(dt * rate);
+      r.av.draw(r.x, r.y, r.z, r.f, r.s, !!r.h, basisQ);
+      placeLabel(r.label, r.x, r.y + ((r.av.data.headHeight || 1.4) + 0.35) * r.s, r.z, !r.h);
+    } else placeLabel(r.label, r.x, r.y + 1.8, r.z, false);
+  }
+
+  for (const h of hounds.values()) {
+    if (!h.av.data) continue;
+    let hy = 0;
+    if (h.dieT) {
+      const t = now / 1000 - h.dieT;
+      hy = Math.max(0, 11 * t - 0.5 * 22 * t * t);
+      h.x += h.dvx * rdt; h.z += h.dvz * rdt;
+      if (t > 1.0) { h.av.root.visible = h.av.shadow.visible = false; continue; }   // gone before it lands
+    } else { h.x += (h.tx - h.x) * k; h.z += (h.tz - h.z) * k; }
+    h.av.step(dt);
+    const sf = Math.cos(camYaw) * h.f >= 0 ? 1 : -1;      // the hound sprite looks left by default
+    h.av.draw(h.x, hy, h.z, -sf, 1, false, basisQ);
+    if (h.dieT) h.av.image.rotation.z += (now / 1000 - h.dieT) * 9;
+  }
+  stepItems(rdt, now / 1000);
+
+  renderer.render(scene, camera);
+  for (const d of $("actions").children) d.classList.toggle("on", d.dataset.state === me.action);
+}
+function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.fov = w < h ? 58 : 35; camera.updateProjectionMatrix(); }   // phones held upright get a wider view
+addEventListener("resize", resize); resize();
+connect();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
